@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IS-U Objektkarte</title>
+<style>
+  /* ---------- Colors as tokens (light + dark) ---------- */
+  :root {
+    --bg: #f6f6f3; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --border: #e1e1da; --line: #b9b9b0; --hit: #fff3c4;
+    --c-sales: #7c5cd6; --c-place: #1f9d74; --c-device: #d9822b; --c-edm: #2f6fde; --c-market: #c4467d;
+    --chk-bg: #fdf0d8; --chk-fg: #8a5a00;
+    --good: #1c8a4a; --good-bg: #e3f4ea; --bad: #c8372d; --bad-bg: #fbe4e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --surface: #222220; --text: #ecece8; --muted: #a3a39c;
+      --border: #3a3a36; --line: #6c6c65; --hit: #4a4220;
+      --c-sales: #a48cf0; --c-place: #4cc79b; --c-device: #f0a456; --c-edm: #6d9cf2; --c-market: #ec7fae;
+      --chk-bg: #3d3018; --chk-fg: #f3c56f;
+      --good: #5fd394; --good-bg: #1d3a2a; --bad: #f07a6e; --bad-bg: #45201c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161615; --surface: #222220; --text: #ecece8; --muted: #a3a39c;
+    --border: #3a3a36; --line: #6c6c65; --hit: #4a4220;
+    --c-sales: #a48cf0; --c-place: #4cc79b; --c-device: #f0a456; --c-edm: #6d9cf2; --c-market: #ec7fae;
+    --chk-bg: #3d3018; --chk-fg: #f3c56f;
+    --good: #5fd394; --good-bg: #1d3a2a; --bad: #f07a6e; --bad-bg: #45201c;
+  }
+
+  /* ---------- Page layout ---------- */
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; }
+  header, main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+  header { padding-bottom: 0; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .back { display: inline-block; margin-bottom: 6px; font-size: 13px; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--c-edm); }
+  body.present .back { display: none; }
+  .sub { margin: 0; color: var(--muted); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 12px; }
+  .toolbar input { flex: 1 1 260px; max-width: 420px; padding: 8px 12px; font: inherit;
+                   color: var(--text); background: var(--surface);
+                   border: 1px solid var(--border); border-radius: 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px;
+                         border-radius: 3px; margin-right: 6px; background: var(--dot); }
+  .legend span.badge::before { display: none; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .map { padding: 8px; overflow: hidden; }
+  .panel { padding: 16px 18px; align-self: start; position: sticky; top: 16px; }
+  @media (max-width: 960px) {
+    .panel { position: static; }
+    body.quizzing .panel { order: -1; }   /* narrow screens: question above the map */
+  }
+
+  /* ---------- Diagram ---------- */
+  svg { display: block; width: 100%; height: auto; }
+  .node { cursor: pointer; transition: opacity .2s; }
+  .node rect { fill: var(--surface); stroke: var(--cat); stroke-width: 2; }
+  .node:hover rect, .node:focus rect { stroke-width: 3; }
+  .node:focus { outline: none; }
+  .node.sel rect { stroke-width: 4; }
+  .node.hit rect { fill: var(--hit); }
+  .node .name { fill: var(--text); font-size: 15px; font-weight: 600; }
+  .node .en { fill: var(--muted); font-size: 12px; }
+  .edge { cursor: pointer; transition: opacity .2s; }
+  .edge line { stroke: var(--line); stroke-width: 1.6; }
+  .edge.on line { stroke: var(--text); stroke-width: 2.2; }
+  .edge.chk line { stroke-dasharray: 6 4; }
+  .edge rect { fill: var(--surface); }
+  .edge text { fill: var(--muted); font-size: 11px; }
+  .edge .tbl { fill: var(--text); font-weight: 600; font-family: Consolas, monospace; }
+  .dim { opacity: .15; }
+  #arrow path { fill: var(--line); }
+
+  /* ---------- Detail panel ---------- */
+  .panel h2 { margin: 0; font-size: 20px; }
+  .panel h3 { margin: 18px 0 6px; font-size: 13px; text-transform: uppercase;
+              letter-spacing: .04em; color: var(--muted); }
+  .panel p { margin: 6px 0; }
+  .panel ul { margin: 0; padding-left: 18px; }
+  .panel li { margin: 4px 0; }
+  .en-label { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; align-items: baseline; padding: 6px 0;
+         border-top: 1px solid var(--border); }
+  .row:first-of-type { border-top: 0; }
+  code { font-family: Consolas, monospace; font-weight: 600; }
+  .row code { flex: 0 0 38%; }
+  .badge { margin-left: auto; flex-shrink: 0; font-size: 11px; padding: 1px 7px; border-radius: 10px;
+           white-space: nowrap; background: var(--chk-bg); color: var(--chk-fg); }
+  .rel { display: block; width: 100%; text-align: left; font: inherit; color: var(--text);
+         background: none; border: 0; border-top: 1px solid var(--border);
+         padding: 6px 0; cursor: pointer; }
+  .rel:hover { color: var(--c-edm); }
+  .hint { color: var(--muted); font-size: 13px; }
+
+  /* ---------- Quiz ---------- */
+  .btn { font: inherit; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+         border: 1px solid var(--c-edm); background: var(--c-edm); color: #fff; }
+  .btn.ghost { background: transparent; color: var(--c-edm); }
+  .btn[hidden] { display: none; }
+  .progress { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+  .opts { display: grid; gap: 8px; margin: 14px 0; }
+  .opt { text-align: left; font: inherit; padding: 10px 12px; cursor: pointer; color: var(--text);
+         background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .opt:hover:not(:disabled) { border-color: var(--c-edm); }
+  .opt:disabled { cursor: default; }
+  .opt.good, .feedback.good { border-color: var(--good); background: var(--good-bg); }
+  .opt.bad, .feedback.bad { border-color: var(--bad); background: var(--bad-bg); }
+  .feedback { margin: 14px 0 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); }
+  .node.good rect { stroke: var(--good); stroke-width: 4; fill: var(--good-bg); }
+  .node.bad rect { stroke: var(--bad); stroke-width: 4; fill: var(--bad-bg); }
+  svg.quiz .edge .tbl { fill: transparent; }          /* hide table names: they would give away answers */
+  svg.quiz .edge.reveal .tbl { fill: var(--text); }
+  .panel.big { font-size: 20px; }
+  .panel.big h2 { font-size: 28px; line-height: 1.3; }
+  .panel.big .hint, .panel.big .progress { font-size: 16px; }
+
+  /* ---------- Full screen / presentation ---------- */
+  html { background: var(--bg); }
+  body.present header, body.present main { max-width: none; }
+  body.present .sub { display: none; }
+  body.present main { grid-template-columns: minmax(0, 1fr) 460px; }
+  body.present svg { height: calc(100vh - 130px); }      /* whole map visible, no scrolling */
+  body.present .panel { font-size: 17px; max-height: calc(100vh - 130px); overflow: auto; }
+  body.present .panel h2 { font-size: 24px; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="../">← Lernprojekte</a>
+  <h1>IS-U Objektkarte</h1>
+  <p class="sub">Wie hängen Geschäftspartner, Anlage, Gerät, Zählwerk und Profil zusammen? Klicke auf ein Objekt oder eine Verbindung.</p>
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Tabelle oder Transaktion suchen, z. B. EASTS, EG34, EPROFASS">
+    <button class="btn" id="quizBtn">Quiz starten</button>
+    <button class="btn ghost" id="audBtn">Publikumsquiz</button>
+    <button class="btn ghost" id="fullBtn" title="Taste F">Vollbild</button>
+    <div class="legend">
+      <span style="--dot: var(--c-sales)">Kaufmännisch</span>
+      <span style="--dot: var(--c-place)">Ort &amp; Anlage</span>
+      <span style="--dot: var(--c-device)">Gerät &amp; Messung</span>
+      <span style="--dot: var(--c-edm)">EDM</span>
+      <span style="--dot: var(--c-market)">Markt</span>
+      <span class="badge" id="chkLegend">⚠ gestrichelt = noch prüfen</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="card map"><svg id="map" viewBox="0 0 1180 940" role="img" aria-label="IS-U Objektmodell"></svg></div>
+  <aside class="card panel" id="panel" aria-live="polite"></aside>
+</main>
+
+<script>
+/* =====================================================================
+   DATA
+   src: 'ref' = checked in the system, 'chk' = still to be checked
+        ('chk' gets a ⚠ badge in the panel and a dashed arrow on the map)
+   Layout grid: x = 40 / 340 / 640 / 940, y = 60 / 220 / 380 / 540 / 700 / 860
+   ===================================================================== */
+const NODES = [
+  { id: 'gp', name: 'Geschäftspartner', en: 'Business Partner', cat: 'sales', x: 40, y: 220,
+    desc: 'Person oder Organisation, mit der das Unternehmen eine Geschäftsbeziehung hat, z. B. der Kunde. Der GP ist SAP-weit zentral und nicht IS-U-spezifisch.',
+    tables: [['BUT000', 'Allgemeine GP-Daten', 'ref'], ['TB004T', 'Texte zur GP-Art', 'ref'],
+             ['BCONT', 'Kundenkontakte zum GP', 'ref']],
+    tcodes: [['BP', 'GP anlegen / ändern / anzeigen', 'ref']],
+    notes: ['BUT000-TYPE: 1 = Person, 2 = Organisation, 3 = Gruppe.',
+            'Änderungsbelege (CDHDR) laufen unter der Objektklasse BUPA_BUP.'] },
+
+  { id: 'vk', name: 'Vertragskonto', en: 'Contract Account', cat: 'sales', x: 40, y: 380,
+    desc: 'Konto im Vertragskontokorrent (FI-CA). Hier landen Forderungen und Zahlungen eines Geschäftspartners. Ein Vertragskonto kann mehrere Verträge bündeln und steuert z. B. Zahlung und Mahnung.',
+    tables: [['FKKVK', 'Kopfdaten', 'ref'], ['FKKVKP', 'GP-abhängige Daten', 'ref']],
+    tcodes: [['CAA1 / CAA2 / CAA3', 'anlegen / ändern / anzeigen', 'ref']],
+    notes: ['Inhaber ist FKKVKP-GPART. Weitere GP können beteiligt sein: abweichender Zahler (ABWRE), abweichender Zahlungsempfänger (ABWRA), abweichender Mahnempfänger (ABWMA), abweichender Rechnungsempfänger (ABWRH).',
+            'Zahlungssteuerung in FKKVKP: Zahlwege (EZAWE / AZAWE), Bankverbindungs-IDs (EBVTY / ABVTY), SEPA-Mandat (MNDID), Mahnverfahren (MAHNV).'] },
+
+  { id: 'vertrag', name: 'Vertrag', en: 'Contract', cat: 'sales', x: 40, y: 540,
+    desc: 'Die Brücke zwischen kaufmännischer und technischer Welt: Ein Vertrag gehört zu einem Vertragskonto und zu einer Anlage. Auf seiner Basis wird abgerechnet.',
+    tables: [['EVER', 'Vertragsdaten', 'ref']],
+    tcodes: [['ES20 / ES21 / ES22', 'anlegen / ändern / anzeigen', 'ref']],
+    notes: ['EVER-VKONTO verweist auf das Vertragskonto, EINZDAT / AUSZDAT sind Ein- und Auszugsdatum.'] },
+
+  { id: 'ao', name: 'Anschlussobjekt', en: 'Connection Object', cat: 'place', x: 340, y: 220,
+    desc: 'Gebäude oder Grundstück mit Netzanschluss. Technisch ein Funktionsplatz aus der Instandhaltung (PM).',
+    tables: [['IFLOT', 'Funktionsplatz', 'ref'], ['EHAUISU', 'IS-U-Daten zum Anschlussobjekt', 'ref']],
+    tcodes: [['ES55 – ES57', 'Anschlussobjekt bearbeiten', 'ref']] },
+
+  { id: 'vs', name: 'Verbrauchsstelle', en: 'Premise', cat: 'place', x: 340, y: 380,
+    desc: 'Ort innerhalb eines Anschlussobjekts, an dem Energie verbraucht wird, z. B. eine Wohnung oder ein Laden.',
+    tables: [['EVBS', 'Verbrauchsstelle', 'ref']],
+    tcodes: [['ES60 – ES62', 'Verbrauchsstelle bearbeiten', 'ref']] },
+
+  { id: 'anlage', name: 'Anlage', en: 'Installation', cat: 'place', x: 340, y: 540,
+    desc: 'Fasst alles zusammen, was in einer Sparte an einer Verbrauchsstelle gemeinsam abgerechnet wird: eingebaute Geräte und Zählwerke, Tariftyp, Ableseeinheit, Lastprofile. Zeitabhängig über Zeitscheiben.',
+    tables: [['EANL', 'Anlage (Sparte, Verbrauchsstelle)', 'ref'], ['EANLH', 'Zeitscheiben (Tariftyp, Ableseeinheit)', 'ref']],
+    tcodes: [['ES30 / ES31 / ES32', 'anlegen / ändern / anzeigen', 'ref']],
+    notes: ['ES31 → „Abgrenzen“ teilt die Zeitscheibe der Anlage (z. B. Tarifwechsel). Lastprofile grenzt man dagegen über den Button „Lastprofil“ ab.',
+            'Je nach Marktrollen-Modell gehören mehrere Anlagen zu einer Marktlokation, z. B. eine für die Lieferung und eine für den Messstellenbetrieb. Das Gerät ist dann in beiden eingebaut.'] },
+
+  { id: 'zp', name: 'Zählpunkt', en: 'Point of Delivery', cat: 'place', x: 340, y: 700,
+    desc: 'Punkt, an dem Energie gemessen oder übergeben wird, mit externer ID. Im deutschen Markt werden darüber Marktlokation (MaLo) und Messlokation (MeLo) abgebildet.',
+    tables: [['EUITRANS', 'Externe Zählpunkt-ID ↔ interne Nummer', 'ref'], ['EUIINSTLN', 'Zählpunkt ↔ Anlage', 'ref']],
+    tcodes: [['EEDM09 / EEDM10 / EEDM11', 'Zählpunkt bearbeiten', 'ref']],
+    notes: ['Weg von der Anlage zur externen ID: EANL → EUIINSTLN (über ANLAGE, zeitabhängig) → EUITRANS (über INT_UI) → EXT_UI.',
+            'MaLo-ID: 11 Stellen, die letzte ist eine Prüfziffer. MeLo-ID: 33 Zeichen, beginnt mit „DE“.',
+            'MaLo und MeLo sind beide Zählpunkte. Je nach Modell hängen sie an getrennten Anlagen, z. B. Lieferung und Messstellenbetrieb (siehe Anlage).'] },
+
+  { id: 'gtyp', name: 'Gerätetyp', en: 'Device Category', cat: 'device', x: 940, y: 220,
+    desc: 'Bauart eines Geräts, technisch ein Material. Legt u. a. Funktionsklasse, Messart und die Default-Zählwerksgruppe fest – und ob nur Geräteinfosätze erlaubt sind.',
+    tables: [['ETYP', 'Schlüssel MATNR. BAUFORM, BAUKLAS, FUNKLAS, ZWGRUPPE, Beglaubigungsdaten, „Art anzul. Geräte“ (3 = nur Geräteinfosätze)', 'ref']],
+    tcodes: [['EG01 / EG02 / EG03', 'anlegen / ändern / anzeigen', 'ref']] },
+
+  { id: 'zwg', name: 'Zählwerksgruppe', en: 'Register Group', cat: 'device', x: 940, y: 380,
+    desc: 'Vorlage für die Zählwerke eines Geräts: welche Zählwerke es gibt, mit OBIS-Kennzahl, Einheit und Intervall.',
+    tables: [['EZWG', 'Zählwerke der Gruppe inkl. OBIS und Vorschlag', 'ref']],
+    tcodes: [['EG04 / EG05 / EG06', 'anlegen (mit Vorlage) / ändern / anzeigen', 'ref']],
+    notes: ['Beim Anlegen eines Geräteinfosatzes werden nur Zählwerke mit Haken „ZW bei E/W vorschl.“ übernommen.',
+            'Einheit und Intervall eines Zählwerks kommen immer aus der Gruppe.',
+            'EZWG_HEADD ist nur eine Dialogstruktur – nicht in SE16N. Die echte Tabelle findet man per SQL-Trace (ST05).'] },
+
+  { id: 'geraet', name: 'Gerät', en: 'Device', cat: 'device', x: 640, y: 540,
+    desc: 'Der physische Zähler. Zwei Varianten: Equipment (eigenes Gerät, z. B. beim Netzbetreiber) oder Geräteinfosatz (fremdes Gerät, z. B. beim Lieferanten – nur die Infos, die man für die Abrechnung braucht).',
+    tables: [['EGERR', 'Geräteinfosatz, zeitabhängig: Gerätetyp (MATNR), Serialnummer (GERAET), Zählwerksgruppe, LOGIKNR', 'ref'],
+             ['EQUI', 'Equipment-Stamm: Gerätetyp (MATNR), Serialnummer (SERNR), Objektnummer für den Status', 'ref'],
+             ['EGERH', 'Equipment zeitabhängig: LOGIKNR, Geräteplatz (DEVLOC)', 'ref'],
+             ['EQKT', 'Equipment-Kurztext', 'ref'],
+             ['EGERS', 'u. a. Beglaubigungsjahr (BGLJAHR)', 'ref'],
+             ['TE057T', 'Text zum Gerätetyp-Kennzeichen (KOMBINAT)', 'ref'],
+             ['JEST / JCDS / TJ02T', 'Status und Statushistorie (nur Equipments)', 'ref']],
+    tcodes: [['EG44 / EG41 / EG43', 'Geräteinfosatz anlegen / ändern / anzeigen', 'ref'],
+             ['IQ01 – IQ03, IE01 – IE03', 'Equipment (nur eigene Geräte)', 'ref']],
+    notes: ['Bei Geräteinfosätzen sind EQUI und EGERH leer. Deshalb haben sie auch keinen Geräteplatz und keinen Equipment-Status.',
+            'Einbau in die Anlage: EASTL verbindet Anlage und logische Gerätenummer (LOGIKNR, gültig AB/BIS). Über LOGIKNR geht es weiter zu EGERH (Equipment) oder EGERR (Geräteinfosatz).',
+            'Eichfrist: Beglaubigungsjahr (EGERS-BGLJAHR) plus Gültigkeitsdauer aus dem Gerätetyp (ETYP-VLZEITT oder -VLZEITTI, je nach ETYP-BGLKZ).',
+            'Änderungsbelege (CDHDR): Objektklasse EQUI für Equipments, ISU_EGERR für Geräteinfosätze.',
+            'Ist ein Gerät eingebaut, sind seine technischen Zählwerksdaten in EG41 nicht mehr änderbar.'] },
+
+  { id: 'zw', name: 'Zählwerk', en: 'Register', cat: 'device', x: 640, y: 700,
+    desc: 'Messwerk eines Geräts, z. B. „Wirkarbeit Bezug“. Identifiziert über das logische Zählwerk (LOGIKZW), fachlich beschrieben durch die OBIS-Kennzahl.',
+    tables: [['ETDZ', 'Technische Zählwerksdaten je Gerät (EQUNR + ZWNUMMER), zeitabhängig: LOGIKZW, OBIS (KENNZIFF), Intervall, Ablese-ME', 'ref'],
+             ['EASTS', 'Logisches Zählwerk ↔ Anlage; leer = nicht eingebaut', 'ref']],
+    tcodes: [],
+    notes: ['EASTS-Flags: ZWNABR = „nicht abrechnungsrelevant“ (z. B. alle Zählwerke in der MeLo-Anlage). ZWNSETTL = vermutlich „nicht bilanzierungsrelevant“ (⚠ Feldtext in SE11 prüfen).',
+            'Zählwerkstyp 4 = saldierend (Lastgang, mit Intervall), 5 = kumulierend (Zählerstand). So im eigenen System gesehen – Customizing kann abweichen.',
+            'Beispiel OBIS: 1-1:1.29.0 = Strom Wirkarbeit Bezug als 15-Minuten-Lastgang.'] },
+
+  { id: 'abl', name: 'Ableseergebnis', en: 'Meter Reading', cat: 'device', x: 640, y: 860,
+    desc: 'Zählerstand eines Zählwerks zu einem Datum, z. B. beim Ein- oder Ausbau.',
+    tables: [['EABL', 'Gerät, Zählwerk, Ablesedatum, Stand', 'ref']],
+    tcodes: [] },
+
+  { id: 'profil', name: 'EDM-Profil', en: 'EDM Profile', cat: 'edm', x: 940, y: 700,
+    desc: 'Zeitreihe im Energiedatenmanagement: Lastgang, Standardlastprofil, Temperatur, Brennwert … Der Profilkopf legt Sparte, Intervall (15/60 Min), Tagesoffset (Gas: 06:00) und Einheit fest.',
+    tables: [['EPROFHEAD', 'Profilkopf', 'ref'], ['EPROFVALSTAT', 'Status der Profilwerte je Zeitraum', 'ref'],
+             ['EEDMSYNPROFALLOC', 'Synthetisches → Elementarprofil', 'ref']],
+    tcodes: [['EEDM06 / EEDM07 / EEDM08', 'Profilkopf anlegen / ändern / anzeigen', 'ref'],
+             ['EEDM01 / EEDM02', 'Profilwerte ändern / anzeigen', 'ref'],
+             ['EEDM04 / EEDM05', 'Profilzuordnung ändern / anzeigen', 'ref']],
+    notes: ['Synthetische Profile haben keine eigenen Werte – sie werden aus einem Elementarprofil generiert, und zwar lückenlos.',
+            'Die Einheit im Profilkopf ist nachträglich nicht änderbar. Einheit und Intervall müssen zum Zählwerk passen.'] },
+
+  // ----- Added from the master data graph, still to be checked -----
+  { id: 'bank', name: 'Bankverbindung', en: 'Bank Details', cat: 'sales', x: 40, y: 60,
+    desc: 'Bankdaten eines Geschäftspartners (IBAN, BIC, Kontoinhaber). Ein GP kann mehrere haben, jede mit eigener ID. Das Vertragskonto legt fest, welche davon für Einzug und Auszahlung genutzt wird.',
+    tables: [['BUT0BK', 'Bankverbindungen des GP', 'ref'], ['TIBAN', 'IBAN zur Bankverbindung', 'ref']],
+    tcodes: [['BP', 'Reiter Zahlungsverkehr', 'ref']],
+    notes: ['TIBAN hängt über Bankland, Bankschlüssel und Kontonummer an der Bankverbindung (BANKS, BANKL, BANKN).',
+            'Jede Bankverbindung hat eine ID (BUT0BK-BKVID, Teil des Schlüssels). Das Vertragskonto wählt darüber aus: FKKVKP-EBVTY für Eingangszahlungen, FKKVKP-ABVTY für Ausgangszahlungen.'] },
+
+  { id: 'adresse', name: 'Adresse', en: 'Address', cat: 'sales', x: 340, y: 60,
+    desc: 'Zentrale Adressverwaltung: Eine Adresse wird einmal gespeichert und über ihre Adressnummer (ADDRNUMBER) von Geschäftspartner, Anschlussobjekt usw. referenziert. An der Adressnummer hängen auch Telefon, Fax und E-Mail.',
+    tables: [['ADRC', 'Adressen (Straße, Hausnummer, PLZ, Ort …)', 'ref'],
+             ['BUT020', 'GP ↔ Adressnummer, zeitabhängig', 'ref'],
+             ['ADR2 / ADR3 / ADR6', 'Telefon / Fax / E-Mail', 'ref']],
+    tcodes: [],
+    notes: ['Gepflegt wird die Adresse im jeweiligen Objekt, z. B. in BP oder in ES55 – ES57.',
+            'Weg vom Anschlussobjekt zur Adresse: IFLOT-ILOAN → ILOA-ADRNR → ADRC.',
+            'Auch das Vertragskonto kennt Adressnummern, z. B. für abweichende Zahler, Mahn- und Rechnungsempfänger (FKKVKP-ADRRE, -ADRMA, -ADRRH).'] },
+
+  { id: 'gplatz', name: 'Geräteplatz', en: 'Functional Location', cat: 'place', x: 640, y: 220,
+    desc: 'Ort innerhalb des Anschlussobjekts, an dem Geräte tatsächlich hängen, z. B. „Keller, Zählerraum“. Technisch wie das Anschlussobjekt ein Funktionsplatz.',
+    tables: [['IFLOT', 'Funktionsplatz', 'ref'], ['IFLOTX', 'Texte', 'ref'],
+             ['JEST / TJ02', 'Status, z. B. Löschvormerkung', 'ref'], ['EGPLTX', 'Standortzusatz, sprachabhängig', 'ref']],
+    tcodes: [['ES65 / ES66 / ES67', 'anlegen / ändern / anzeigen', 'ref']],
+    notes: ['Die Hierarchie steckt in IFLOT selbst: IFLOT-TPLMA ist der übergeordnete Funktionsplatz, also das Anschlussobjekt (= EHAUISU-HAUS). IFLOT-TPLKZ ist das Strukturkennzeichen.',
+            'Equipments verweisen über EGERH-DEVLOC auf den Geräteplatz. Geräteinfosätze haben keinen Geräteplatz.'] },
+
+  { id: 'netz', name: 'Netz', en: 'Grid', cat: 'market', x: 340, y: 860,
+    desc: 'Strom- oder Gasnetz, in dem ein Zählpunkt liegt. Wichtig für Netznutzung und Bilanzierung.',
+    tables: [['EGRID', 'Netz', 'ref'], ['EGRIDT', 'Texte (Netzname)', 'ref'],
+             ['EGRIDH', 'Netzbetreiber und Bilanzkoordinator zum Netz, zeitabhängig', 'ref'],
+             ['EUIGRID', 'Zählpunkt ↔ Netz', 'ref']],
+    tcodes: [] },
+
+  { id: 'sp', name: 'Serviceanbieter', en: 'Service Provider', cat: 'market', x: 40, y: 700,
+    desc: 'Marktpartner, der eine Dienstleistung an einem Zählpunkt erbringt: Netzbetreiber, Messstellenbetreiber, Lieferant. Im deutschen Markt identifiziert über die Marktpartner-ID.',
+    tables: [['ESERVPROV', 'Serviceanbieter, inkl. externer ID (EXTERNALID)', 'ref'], ['ESERVPROVT', 'Name', 'ref'],
+             ['TECDE / TECDET', 'Serviceart und Text', 'ref'],
+             ['ESERVICE', 'Services am Zählpunkt (über INT_UI)', 'ref']],
+    tcodes: [],
+    notes: ['Ein Serviceanbieter kann auch Netzbetreiber eines Netzes sein (EGRIDH-DISTRIBUTOR).'] },
+];
+
+// [from, to, label, table, src, optional label position 0..1 along the arrow]
+const EDGES = [
+  ['gp', 'vk', 'Inhaber / beteiligt', 'FKKVKP', 'ref'],
+  ['vk', 'vertrag', 'rechnet ab', 'EVER', 'ref'],
+  ['vertrag', 'anlage', 'beliefert', 'EVER', 'ref'],
+  ['ao', 'vs', 'enthält', 'EVBS', 'ref'],
+  ['vs', 'anlage', 'hat', 'EANL', 'ref'],
+  ['anlage', 'zp', 'gehört zu', 'EUIINSTLN', 'ref'],
+  ['gtyp', 'zwg', 'Default-Gruppe', 'ETYP', 'ref'],
+  ['gtyp', 'geraet', 'ist vom Typ', 'EQUI / EGERR', 'ref'],
+  ['zwg', 'geraet', 'liefert Zählwerke', 'EGERR', 'ref'],
+  ['anlage', 'geraet', 'Einbau', 'EASTL', 'ref'],
+  ['geraet', 'zw', 'hat', 'ETDZ', 'ref'],
+  ['anlage', 'zw', 'abrechnungstechnisch', 'EASTS', 'ref'],
+  ['zw', 'profil', 'Profilrolle', 'EPROFASS', 'ref'],
+  ['anlage', 'profil', 'Lastprofil', 'ELPASS', 'ref', 0.75],
+  ['zw', 'abl', 'Ablesung', 'EABL', 'ref'],
+  ['gp', 'bank', 'hat', 'BUT0BK', 'ref'],
+  ['gp', 'adresse', 'wohnt an', 'BUT020', 'ref'],
+  ['ao', 'adresse', 'liegt an', 'ILOA', 'ref'],
+  ['ao', 'gplatz', 'enthält', 'IFLOT', 'ref'],
+  ['gplatz', 'geraet', 'Einbauort', 'EGERH', 'ref'],
+  ['zp', 'netz', 'liegt in', 'EUIGRID', 'ref'],
+  ['zp', 'sp', 'betreut', 'ESERVICE', 'ref'],
+  ['netz', 'sp', 'Netzbetreiber', 'EGRIDH', 'ref'],
+].map(([from, to, label, table, src, at = 0.5]) => ({ from, to, label, table, src, at }));
+
+const W = 190, H = 58;   // node size in SVG units
+
+/* =====================================================================
+   DRAWING
+   ===================================================================== */
+const svg = document.getElementById('map');
+const panel = document.getElementById('panel');
+const byId = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+function el(tag, attrs = {}, parent = svg) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent.appendChild(e);
+  return e;
+}
+
+// Point where the line from the box center towards (tx, ty) leaves the box.
+function borderPoint(n, tx, ty) {
+  const cx = n.x + W / 2, cy = n.y + H / 2, dx = tx - cx, dy = ty - cy;
+  const t = Math.min((W / 2 + 4) / Math.abs(dx || 1e-9), (H / 2 + 4) / Math.abs(dy || 1e-9));
+  return [cx + dx * t, cy + dy * t];
+}
+
+// Arrow head
+const marker = el('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 9, refY: 5,
+                              markerWidth: 7, markerHeight: 7, orient: 'auto' }, el('defs'));
+el('path', { d: 'M0,0 L10,5 L0,10 z' }, marker);
+
+// Edges first, so nodes are drawn on top
+EDGES.forEach((e, i) => {
+  const a = byId[e.from], b = byId[e.to];
+  const [x1, y1] = borderPoint(a, b.x + W / 2, b.y + H / 2);
+  const [x2, y2] = borderPoint(b, a.x + W / 2, a.y + H / 2);
+  const g = el('g', { class: `edge ${e.src}`, 'data-i': i });
+  el('line', { x1, y1, x2, y2, 'marker-end': 'url(#arrow)' }, g);
+
+  // Label (middle by default): relation + table name
+  const mx = x1 + (x2 - x1) * e.at, my = y1 + (y2 - y1) * e.at;
+  const bg = el('rect', { rx: 4 }, g);
+  const t = el('text', { x: mx, y: my + 4, 'text-anchor': 'middle' }, g);
+  t.textContent = e.label + ' · ';
+  const tb = el('tspan', { class: 'tbl' }, t);
+  tb.textContent = e.table;
+  const box = t.getBBox();
+  Object.entries({ x: box.x - 4, y: box.y - 2, width: box.width + 8, height: box.height + 4 })
+        .forEach(([k, v]) => bg.setAttribute(k, v));
+
+  g.addEventListener('click', () => { if (!quiz.on) selectEdge(i); });
+  e.g = g;
+});
+
+NODES.forEach(n => {
+  const g = el('g', { class: 'node', tabindex: 0, role: 'button', 'aria-label': n.name,
+                      style: `--cat: var(--c-${n.cat})` });
+  el('rect', { x: n.x, y: n.y, width: W, height: H, rx: 10 }, g);
+  el('text', { x: n.x + W / 2, y: n.y + 26, 'text-anchor': 'middle', class: 'name' }, g).textContent = n.name;
+  el('text', { x: n.x + W / 2, y: n.y + 45, 'text-anchor': 'middle', class: 'en' }, g).textContent = n.en;
+  const pick = () => quiz.on ? answerOnMap(n.id) : selectNode(n.id);
+  g.addEventListener('click', pick);
+  g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); pick(); } });
+  n.g = g;
+});
+
+/* =====================================================================
+   SELECTION + PANEL
+   ===================================================================== */
+function highlight(nodeIds, edgeIdx) {
+  NODES.forEach(n => n.g.classList.toggle('dim', !nodeIds.has(n.id)));
+  EDGES.forEach((e, i) => {
+    e.g.classList.toggle('dim', !edgeIdx.has(i));
+    e.g.classList.toggle('on', edgeIdx.has(i));
+  });
+}
+
+function rows(list) {
+  return list.map(([name, text, src]) =>
+    `<div class="row"><code>${name}</code><span>${text}</span>${src === 'chk' ? '<span class="badge">⚠ prüfen</span>' : ''}</div>`).join('');
+}
+
+function selectNode(id) {
+  const n = byId[id];
+  const edgeIdx = new Set(), nodeIds = new Set([id]);
+  EDGES.forEach((e, i) => {
+    if (e.from === id || e.to === id) { edgeIdx.add(i); nodeIds.add(e.from); nodeIds.add(e.to); }
+  });
+  NODES.forEach(x => x.g.classList.toggle('sel', x.id === id));
+  highlight(nodeIds, edgeIdx);
+
+  const rels = [...edgeIdx].map(i => {
+    const e = EDGES[i], out = e.from === id, other = byId[out ? e.to : e.from];
+    return `<button class="rel" data-node="${other.id}">${out ? '→' : '←'} <b>${other.name}</b>: ${e.label} · <code>${e.table}</code></button>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <h2>${n.name}</h2><div class="en-label">${n.en}</div>
+    <p>${n.desc}</p>
+    ${n.tables.length ? `<h3>Tabellen</h3>${rows(n.tables)}` : ''}
+    ${n.tcodes.length ? `<h3>Transaktionen</h3>${rows(n.tcodes)}` : ''}
+    ${n.notes ? `<h3>Merke</h3><ul>${n.notes.map(t => `<li>${t}</li>`).join('')}</ul>` : ''}
+    <h3>Beziehungen</h3>${rels}
+    ${linkBox()}
+    <p class="hint" style="margin-top:14px">Esc oder Klick auf freie Fläche: Auswahl aufheben</p>`;
+  panel.querySelectorAll('.rel').forEach(b => b.addEventListener('click', () => selectNode(b.dataset.node)));
+  setHash(id);
+}
+
+function selectEdge(i) {
+  const e = EDGES[i], a = byId[e.from], b = byId[e.to];
+  NODES.forEach(x => x.g.classList.remove('sel'));
+  highlight(new Set([a.id, b.id]), new Set([i]));
+  panel.innerHTML = `
+    <h2>${a.name} → ${b.name}</h2>
+    <p>Beziehung: <b>${e.label}</b></p>
+    <h3>Gespeichert in</h3>${rows([[e.table, '', e.src]])}
+    <h3>Weiter zu</h3>
+    <button class="rel" data-node="${a.id}">${a.name}</button>
+    <button class="rel" data-node="${b.id}">${b.name}</button>
+    ${linkBox()}`;
+  panel.querySelectorAll('.rel').forEach(btn => btn.addEventListener('click', () => selectNode(btn.dataset.node)));
+  setHash(`${a.id}-${b.id}`);
+}
+
+function reset() {
+  NODES.forEach(n => n.g.classList.remove('sel', 'dim'));
+  EDGES.forEach(e => e.g.classList.remove('dim', 'on'));
+  panel.innerHTML = `
+    <h2>Willkommen</h2>
+    <p>Diese Karte zeigt die wichtigsten IS-U-Objekte und wie sie zusammenhängen – von der kaufmännischen Seite (links) über Ort und Anlage bis zu Gerät, Zählwerk und EDM-Profil.</p>
+    <h3>So geht's</h3>
+    <ul>
+      <li>Klick auf ein <b>Objekt</b>: Beschreibung, Tabellen, Transaktionen, Beziehungen.</li>
+      <li>Klick auf eine <b>Verbindung</b>: in welcher Tabelle sie gespeichert ist.</li>
+      <li><b>Suche</b> oben: Tabelle oder Transaktion eintippen, z. B. <code>EASTS</code> oder <code>EG34</code>.</li>
+      <li><b>Quiz</b>: 10 Fragen, automatisch erzeugt aus den Daten dieser Karte. Das <b>Publikumsquiz</b> ist für Präsentationen: Leertaste löst auf.</li>
+      <li><b>Direktlinks</b>: Jedes Objekt hat eine eigene Adresse, z. B. <code>#anlage</code>, eine Verbindung z. B. <code>#anlage-zw</code>. <code>#quiz</code> und <code>#publikumsquiz</code> starten direkt das Quiz.</li>
+      <li><b>Vollbild</b> für Präsentationen: Button oben oder Taste <code>F</code>.</li>
+    </ul>`;
+  setHash('');
+}
+
+/* =====================================================================
+   DIRECT LINKS: the URL hash mirrors what is shown
+     #anlage          → object
+     #anlage-zw       → connection (from-to)
+     #quiz            → quiz, #publikumsquiz → audience quiz
+   ===================================================================== */
+function setHash(h) {
+  // replaceState: no new history entry per click, and no hashchange event
+  try { history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); } catch (e) { /* e.g. preview without real URL */ }
+}
+
+function applyHash() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  const edge = EDGES.findIndex(e => `${e.from}-${e.to}` === h);
+  if (quiz.on && h !== 'quiz' && h !== 'publikumsquiz') stopQuiz();
+  if (byId[h]) selectNode(h);
+  else if (edge >= 0) selectEdge(edge);
+  else if (h === 'quiz' || h === 'publikumsquiz') startQuiz(h === 'publikumsquiz');
+  else reset();
+}
+
+function linkBox() {
+  return `<p style="margin-top:14px"><button class="btn ghost" id="copyLink">Link kopieren</button>
+          <span class="hint" id="copyMsg"></span></p>`;
+}
+
+// Delegated, because the button is re-created with every panel update
+panel.addEventListener('click', async ev => {
+  if (ev.target.id !== 'copyLink') return;
+  const msg = document.getElementById('copyMsg');
+  try {
+    await navigator.clipboard.writeText(location.href);
+    msg.textContent = 'Kopiert!';
+  } catch (e) {
+    msg.textContent = location.href;   // clipboard blocked: show it for manual copying
+  }
+});
+
+window.addEventListener('hashchange', applyHash);
+
+/* =====================================================================
+   FULL SCREEN: browser full screen plus a layout where the whole map fits.
+   If the browser refuses full screen, the layout still switches.
+   ===================================================================== */
+const fullBtn = document.getElementById('fullBtn');
+
+function setPresent(on) {
+  document.body.classList.toggle('present', on);
+  fullBtn.textContent = on ? 'Vollbild beenden' : 'Vollbild';
+}
+
+function togglePresent() {
+  const on = !document.body.classList.contains('present');
+  setPresent(on);
+  if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+  else if (document.fullscreenElement) document.exitFullscreen();
+}
+
+fullBtn.addEventListener('click', togglePresent);
+// Esc in browser full screen only ends full screen – follow that
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) setPresent(false); });
+document.addEventListener('keydown', ev => {
+  if ((ev.key === 'f' || ev.key === 'F') && !ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.target.tagName !== 'INPUT') togglePresent();
+});
+
+svg.addEventListener('click', ev => { if (ev.target === svg && !quiz.on) reset(); });
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  if (quiz.on) stopQuiz(); else { search.value = ''; runSearch(); reset(); }
+});
+
+/* =====================================================================
+   SEARCH: matches names, tables and transactions of nodes and edges
+   ===================================================================== */
+const search = document.getElementById('search');
+
+function runSearch() {
+  const q = search.value.trim().toUpperCase();
+  const hits = new Set();
+  if (q) {
+    NODES.forEach(n => {
+      const text = [n.name, n.en, ...n.tables.flat(), ...n.tcodes.flat()].join(' ').toUpperCase();
+      if (text.includes(q)) hits.add(n.id);
+    });
+    EDGES.forEach(e => { if (e.table.toUpperCase().includes(q)) { hits.add(e.from); hits.add(e.to); } });
+  }
+  NODES.forEach(n => n.g.classList.toggle('hit', hits.has(n.id)));
+  return hits;
+}
+
+search.addEventListener('input', runSearch);
+search.addEventListener('keydown', ev => {
+  if (ev.key === 'Enter') { const first = [...runSearch()][0]; if (first) selectNode(first); }
+});
+
+/* =====================================================================
+   QUIZ: all questions are generated from NODES and EDGES,
+   so new objects show up in the quiz automatically.
+   Three question types:
+     where  – "Which object does table X belong to?" → click on the map
+     choice – "Which table connects A and B?" → 4 options
+     choice – "Which transaction creates / changes / displays X?" → 4 options
+   ===================================================================== */
+const QUIZ_LEN = 10;
+const BEST_KEY = 'isu-objektkarte-quiz-best';
+const CODE = /^[A-Z0-9_]+$/;
+const quizBtn = document.getElementById('quizBtn');
+const audBtn = document.getElementById('audBtn');
+const quiz = { on: false, audience: false, done: false, answered: false, qs: [], i: 0, score: 0, missed: [] };
+
+// 'ES55 – ES57' → ['ES55', 'ES57']
+const tokens = s => s.split(/[\s\/,–]+/).filter(t => CODE.test(t) && t.length >= 2);
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+// Correct answer plus 3 wrong ones. Similar names (same prefix, e.g. EASTL for EASTS) are preferred.
+function withDistractors(correct, pool) {
+  const prefix = s => { let k = 0; while (k < s.length && s[k] === correct[k]) k++; return k; };
+  const similar = shuffle(pool.filter(t => t !== correct)).sort((x, y) => prefix(y) - prefix(x));
+  return shuffle([correct, ...shuffle(similar.slice(0, 6)).slice(0, 3)]);
+}
+
+function buildQuestions() {
+  const owners = {};   // token → ids of all objects that list it
+  NODES.forEach(n => [...n.tables, ...n.tcodes].forEach(([name]) =>
+    tokens(name).forEach(t => (owners[t] ??= new Set()).add(n.id))));
+  const tablePool = [...new Set([...NODES.flatMap(n => n.tables.flatMap(([name]) => tokens(name))),
+                                 ...EDGES.flatMap(e => tokens(e.table))])];
+  const tcodePool = [...new Set(NODES.flatMap(n => n.tcodes.flatMap(([name]) => tokens(name))))];
+  const qs = [];
+
+  // where: only tables that belong to exactly one object, otherwise there would be several right answers
+  // A link table (e.g. EUIGRID: Zählpunkt ↔ Netz) also counts for the object on the other end.
+  NODES.forEach(n => n.tables.forEach(([name, text, src]) => {
+    if (src !== 'ref' || !tokens(name).every(t => owners[t].size === 1)) return;
+    const accept = new Set([n.id]);
+    EDGES.forEach(e => {
+      if ((e.from === n.id || e.to === n.id) && tokens(e.table).some(t => tokens(name).includes(t))) {
+        accept.add(e.from); accept.add(e.to);
+      }
+    });
+    const others = [...accept].filter(id => id !== n.id).map(id => `<b>${byId[id].name}</b>`);
+    qs.push({ type: 'where', node: n.id, accept, ask: `Zu welchem Objekt gehört <code>${name}</code>?`,
+              explain: `<code>${name}</code> gehört zu <b>${n.name}</b>: ${text}` +
+                       (others.length ? `. Sie speichert auch die Verbindung zu ${others.join(', ')} – das zählt auch.` : '') });
+  }));
+
+  // choice: table of a connection
+  EDGES.forEach((e, i) => {
+    if (e.src !== 'ref' || !CODE.test(e.table)) return;
+    const a = byId[e.from], b = byId[e.to];
+    qs.push({ type: 'choice', edge: i, nodes: [a.id, b.id], answer: e.table,
+              options: withDistractors(e.table, tablePool),
+              ask: `Welche Tabelle verbindet <b>${a.name}</b> und <b>${b.name}</b>?`,
+              explain: `${a.name} → ${b.name}: ${e.label} · <code>${e.table}</code>` });
+  });
+
+  // choice: transaction, from rows like ['EG44 / EG41 / EG43', 'Geräteinfosatz anlegen / ändern / anzeigen']
+  NODES.forEach(n => n.tcodes.forEach(([name, text, src]) => {
+    const codes = name.split(' / '), parts = text.split(' / ');
+    if (src !== 'ref' || codes.length < 2 || codes.length !== parts.length || !codes.every(c => CODE.test(c))) return;
+    const startsWithVerb = /^[a-zäöü]/.test(parts[0]);
+    const subject = startsWithVerb ? n.name : parts[0].split(' ').slice(0, -1).join(' ');
+    const verbs = [startsWithVerb ? parts[0] : parts[0].split(' ').at(-1), ...parts.slice(1)];
+    codes.forEach((code, k) => qs.push({
+      type: 'choice', nodes: [n.id], answer: code, options: withDistractors(code, tcodePool),
+      ask: `Mit welcher Transaktion: <b>${subject} ${verbs[k]}</b>?`,
+      explain: `<code>${code}</code>: ${subject} ${verbs[k]}` }));
+  }));
+
+  return qs;
+}
+
+function clearMarks() {
+  NODES.forEach(n => n.g.classList.remove('good', 'bad', 'sel', 'dim', 'hit'));
+  EDGES.forEach(e => e.g.classList.remove('reveal', 'on', 'dim'));
+}
+
+function startQuiz(audience) {
+  Object.assign(quiz, { on: true, audience, i: 0, score: 0, missed: [],
+                        qs: shuffle(buildQuestions()).slice(0, QUIZ_LEN) });
+  search.value = ''; search.disabled = true;
+  document.body.classList.add('quizzing');
+  svg.classList.add('quiz');
+  panel.classList.toggle('big', audience);
+  quizBtn.textContent = 'Quiz beenden';
+  audBtn.hidden = true;
+  setHash(audience ? 'publikumsquiz' : 'quiz');
+  showQuestion();
+}
+
+function stopQuiz() {
+  quiz.on = false;
+  search.disabled = false;
+  document.body.classList.remove('quizzing');
+  svg.classList.remove('quiz');
+  panel.classList.remove('big');
+  quizBtn.textContent = 'Quiz starten';
+  audBtn.hidden = false;
+  clearMarks();
+  reset();
+}
+
+function showQuestion() {
+  const q = quiz.qs[quiz.i];
+  quiz.answered = false; quiz.done = false;
+  clearMarks();
+  if (q.edge !== undefined) highlight(new Set(q.nodes), new Set([q.edge]));   // show which connection is meant
+
+  const how = q.type === 'where'
+    ? `<p class="hint ask-hint">${quiz.audience ? 'Leertaste: Auflösen' : 'Klicke auf der Karte auf das richtige Objekt.'}</p>`
+    : `<div class="opts">${q.options.map(o => `<button class="opt" data-o="${o}"><code>${o}</code></button>`).join('')}</div>
+       ${quiz.audience ? '<p class="hint ask-hint">Leertaste: Auflösen</p>' : ''}`;
+  panel.innerHTML = `
+    <div class="progress">Frage ${quiz.i + 1} / ${quiz.qs.length}${quiz.audience ? '' : ` · ${quiz.score} richtig`}</div>
+    <h2>${q.ask}</h2>
+    ${how}
+    <div id="fb"></div>`;
+  panel.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => answer(b.dataset.o)));
+}
+
+function answerOnMap(id) {
+  if (quiz.qs[quiz.i]?.type === 'where') answer(id);
+}
+
+// given = clicked object id or option; null = revealed without answer (audience mode)
+function answer(given) {
+  if (!quiz.on || quiz.answered || quiz.done) return;
+  const q = quiz.qs[quiz.i];
+  const correct = q.type === 'where' ? q.node : q.answer;
+  const ok = q.type === 'where' ? q.accept.has(given) : given === correct;
+  quiz.answered = true;
+  if (!quiz.audience) { if (ok) quiz.score++; else quiz.missed.push(q); }
+
+  if (q.type === 'where') {
+    q.accept.forEach(id => byId[id].g.classList.add('good'));
+    if (given && !ok) byId[given].g.classList.add('bad');
+  } else {
+    panel.querySelectorAll('.opt').forEach(b => {
+      b.disabled = true;
+      if (b.dataset.o === correct) b.classList.add('good');
+      else if (b.dataset.o === given) b.classList.add('bad');
+    });
+    if (q.edge !== undefined) EDGES[q.edge].g.classList.add('reveal');
+    else { highlight(new Set(q.nodes), new Set()); byId[q.nodes[0]].g.classList.add('good'); }
+  }
+
+  panel.querySelector('.ask-hint')?.remove();
+  const verdict = given === null ? '' : ok ? '✓ Richtig! ' : '✗ Leider falsch. ';
+  const last = quiz.i === quiz.qs.length - 1;
+  document.getElementById('fb').innerHTML = `
+    <div class="feedback ${given === null ? '' : ok ? 'good' : 'bad'}">${verdict}${q.explain}</div>
+    <button class="btn" id="next">${last ? 'Ergebnis' : 'Weiter'}</button>
+    <span class="hint">oder ${quiz.audience ? 'Leertaste' : 'Enter'}</span>`;
+  document.getElementById('next').addEventListener('click', next);
+}
+
+function next() {
+  if (quiz.i < quiz.qs.length - 1) { quiz.i++; showQuestion(); } else showResult();
+}
+
+function showResult() {
+  quiz.done = true;
+  clearMarks();
+  if (quiz.audience) {
+    panel.innerHTML = `<h2>Geschafft!</h2><p>Danke fürs Mitraten.</p>
+      <button class="btn" id="again">Neue Runde</button> <button class="btn ghost" id="end">Zur Karte</button>`;
+  } else {
+    let best = quiz.score;
+    try {
+      best = Math.max(Number(localStorage.getItem(BEST_KEY)) || 0, quiz.score);
+      localStorage.setItem(BEST_KEY, best);
+    } catch (e) { /* storage blocked: just show this round */ }
+    panel.innerHTML = `
+      <h2>${quiz.score} von ${quiz.qs.length} richtig</h2>
+      <p class="hint">Bestwert in diesem Browser: ${best} / ${QUIZ_LEN}</p>
+      ${quiz.missed.length
+        ? `<h3>Zum Wiederholen</h3><ul>${quiz.missed.map(q => `<li>${q.explain}</li>`).join('')}</ul>`
+        : '<p>Alles richtig – stark!</p>'}
+      <button class="btn" id="again">Neue Runde</button> <button class="btn ghost" id="end">Zur Karte</button>`;
+  }
+  document.getElementById('again').addEventListener('click', () => startQuiz(quiz.audience));
+  document.getElementById('end').addEventListener('click', stopQuiz);
+}
+
+quizBtn.addEventListener('click', () => quiz.on ? stopQuiz() : startQuiz(false));
+audBtn.addEventListener('click', () => startQuiz(true));
+
+// Enter / space: next question; in audience mode space also reveals the answer
+document.addEventListener('keydown', ev => {
+  if (!quiz.on || quiz.done || ev.target.tagName === 'BUTTON') return;
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  ev.preventDefault();
+  if (quiz.answered) next();
+  else if (quiz.audience) answer(null);
+});
+
+// The "dashed = still to check" legend only makes sense while a connection is unchecked
+document.getElementById('chkLegend').hidden = !EDGES.some(e => e.src === 'chk');
+
+applyHash();   // open what the link points to, otherwise the welcome text
+</script>
+</body>
+</html>

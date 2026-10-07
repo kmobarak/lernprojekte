@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lernprojekte</title>
+<style>
+  :root {
+    --bg: #f6f6f3; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --border: #e1e1da; --accent: #2f6fde; --done: #1c8a4a; --done-bg: #e3f4ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --surface: #222220; --text: #ecece8; --muted: #a3a39c;
+      --border: #3a3a36; --accent: #6d9cf2; --done: #5fd394; --done-bg: #1d3a2a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161615; --surface: #222220; --text: #ecece8; --muted: #a3a39c;
+    --border: #3a3a36; --accent: #6d9cf2; --done: #5fd394; --done-bg: #1d3a2a;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.55 system-ui, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 48px 16px; }
+  h1 { margin: 0 0 8px; font-size: 32px; }
+  .intro { margin: 0 0 32px; color: var(--muted); }
+  .list { display: grid; gap: 14px; }
+  .card { display: block; padding: 18px 20px; border-radius: 12px; text-decoration: none; color: inherit;
+          background: var(--surface); border: 1px solid var(--border); }
+  a.card:hover { border-color: var(--accent); }
+  .card h2 { margin: 0 0 4px; font-size: 19px; }
+  .card p { margin: 0; color: var(--muted); }
+  .top { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+  .nr { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .tag { flex-shrink: 0; font-size: 12px; padding: 2px 9px; border-radius: 10px;
+         border: 1px solid var(--border); color: var(--muted); }
+  .tag.done { border-color: var(--done); background: var(--done-bg); color: var(--done); }
+  .card.planned { opacity: .7; }
+  footer { margin-top: 40px; font-size: 14px; color: var(--muted); }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lernprojekte</h1>
+  <p class="intro">Kleine Projekte, mit denen ich lerne: rund um SAP IS-U, Energiedaten und Webentwicklung. Jedes Projekt ist eine einzelne Seite, die im Browser läuft.</p>
+
+  <div class="list">
+    <a class="card" href="01-isu-objektkarte/">
+      <div class="top"><h2><span class="nr">01</span>IS-U Objektkarte</h2><span class="tag done">fertig</span></div>
+      <p>Interaktive Karte der IS-U-Objekte vom Geschäftspartner bis zum EDM-Profil: Tabellen, Transaktionen, Beziehungen. Mit Quiz und Präsentationsmodus.</p>
+    </a>
+
+    <div class="card planned">
+      <div class="top"><h2><span class="nr">02</span>Zeitumstellung &amp; Lastprofile</h2><span class="tag">geplant</span></div>
+      <p>Warum ein Tag 92, 96 oder 100 Viertelstunden hat – und was Gastag und Schaltjahr damit zu tun haben.</p>
+    </div>
+  </div>
+
+  <footer>Quellcode auf <a href="https://github.com/kmobarak/lernprojekte">GitHub</a></footer>
+</main>
+</body>
+</html>
