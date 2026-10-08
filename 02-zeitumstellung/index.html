@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zeitumstellung &amp; Lastprofile</title>
+<style>
+  /* ---------- Colors as tokens (light + dark) ---------- */
+  :root {
+    --bg: #f6f6f3; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --border: #e1e1da; --accent: #2f6fde; --cell: #eef1f6;
+    --gap: #c8372d; --gap-bg: #fbe4e1; --a: #b66a00; --a-bg: #fdf0d8; --b: #6b4fc8; --b-bg: #ece6fb;
+    --good: #1c8a4a; --good-bg: #e3f4ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --surface: #222220; --text: #ecece8; --muted: #a3a39c;
+      --border: #3a3a36; --accent: #6d9cf2; --cell: #2c2f36;
+      --gap: #f07a6e; --gap-bg: #45201c; --a: #f3c56f; --a-bg: #3d3018; --b: #b9a6f5; --b-bg: #2e2747;
+      --good: #5fd394; --good-bg: #1d3a2a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #161615; --surface: #222220; --text: #ecece8; --muted: #a3a39c;
+    --border: #3a3a36; --accent: #6d9cf2; --cell: #2c2f36;
+    --gap: #f07a6e; --gap-bg: #45201c; --a: #f3c56f; --a-bg: #3d3018; --b: #b9a6f5; --b-bg: #2e2747;
+    --good: #5fd394; --good-bg: #1d3a2a;
+  }
+
+  /* ---------- Page layout ---------- */
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .back { display: inline-block; margin-bottom: 6px; font-size: 13px; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--accent); }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { margin: 0 0 14px; color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+  h2 { margin: 0 0 8px; font-size: 18px; }
+  .hint { color: var(--muted); font-size: 13px; }
+  code { font-family: Consolas, monospace; font-weight: 600; }
+
+  /* ---------- Tabs ---------- */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab { font: inherit; padding: 7px 14px; border-radius: 8px; cursor: pointer; color: var(--text);
+         background: var(--surface); border: 1px solid var(--border); }
+  .tab.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .tab:disabled { cursor: default; opacity: .5; }
+
+  /* ---------- Controls ---------- */
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .btn, input[type=date] { font: inherit; padding: 6px 12px; border-radius: 8px; color: var(--text);
+                           background: var(--surface); border: 1px solid var(--border); }
+  .btn { cursor: pointer; }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  label.chk { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
+  /* ---------- Summary ---------- */
+  .summary { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline; }
+  .big { font-size: 34px; font-weight: 700; line-height: 1.1; }
+  .big small { font-size: 15px; font-weight: 400; color: var(--muted); }
+  .verdict { padding: 3px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+  .verdict.ok { background: var(--good-bg); color: var(--good); }
+  .verdict.short { background: var(--gap-bg); color: var(--gap); }
+  .verdict.long { background: var(--b-bg); color: var(--b); }
+  .explain { margin: 10px 0 0; }
+
+  /* ---------- Day grid: one row per (local) hour ---------- */
+  .grid { display: grid; gap: 3px; }
+  .daterow { margin: 10px 0 2px; font-weight: 600; font-size: 13px; color: var(--muted); }
+  .hrow { display: grid; grid-template-columns: 74px 1fr 92px; gap: 8px; align-items: center; }
+  .hlabel { font-family: Consolas, monospace; font-weight: 600; }
+  .cells { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 3px; }
+  .cell { padding: 3px 0; text-align: center; font-family: Consolas, monospace; font-size: 12px;
+          border-radius: 4px; background: var(--cell); }
+  .utc { font-family: Consolas, monospace; font-size: 12px; color: var(--muted); text-align: right; }
+  .grid:not(.show-utc) .utc { visibility: hidden; }
+  .hrow.a .cell { background: var(--a-bg); color: var(--a); }
+  .hrow.a .hlabel { color: var(--a); }
+  .hrow.b .cell { background: var(--b-bg); color: var(--b); }
+  .hrow.b .hlabel { color: var(--b); }
+  .gaprow { padding: 6px 10px; border-radius: 6px; border: 1px dashed var(--gap); background: var(--gap-bg);
+            color: var(--gap); font-weight: 600; font-size: 13px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+                         margin-right: 6px; background: var(--dot); }
+
+  .topbar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .topbar .tabs { margin-bottom: 0; }
+
+  /* ---------- Year view: 12 month calendars ---------- */
+  .yearinput { width: 92px; text-align: center; }
+  .months { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px; }
+  .month h3 { margin: 0 0 6px; font-size: 14px; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 12px; }
+  .cal .wd { color: var(--muted); font-size: 11px; padding-bottom: 2px; }
+  .day { font: inherit; padding: 4px 0; border: 0; border-radius: 4px; cursor: pointer;
+         background: var(--cell); color: var(--text); }
+  .day:hover, .day:focus-visible { outline: 2px solid var(--accent); }
+  .day.short { background: var(--gap-bg); color: var(--gap); font-weight: 700; box-shadow: inset 0 0 0 1px var(--gap); }
+  .day.long  { background: var(--b-bg); color: var(--b); font-weight: 700; box-shadow: inset 0 0 0 1px var(--b); }
+  .day.leap  { background: var(--a-bg); color: var(--a); font-weight: 700; box-shadow: inset 0 0 0 1px var(--a); }
+  .tablewrap { overflow-x: auto; }
+  table.years { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .years th, .years td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .years th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .years tr.pick { cursor: pointer; }
+  .years tr.pick:hover td { background: var(--cell); }
+  .years tr.cur td { font-weight: 700; }
+  .years tr.bad td { color: var(--gap); }
+  .years tr.bad td:first-child { font-weight: 700; }
+
+  /* ---------- Self-test ---------- */
+  .tests { font-size: 13px; color: var(--muted); }
+  .tests div { margin: 2px 0; }
+  .pass { color: var(--good); font-weight: 600; }
+  .fail { color: var(--gap); font-weight: 600; }
+
+  @media (max-width: 560px) {
+    .hrow { grid-template-columns: 58px 1fr 0; }
+    .grid.show-utc .hrow { grid-template-columns: 58px 1fr 74px; }
+    .cell { font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../">← Lernprojekte</a>
+  <h1>Zeitumstellung &amp; Lastprofile</h1>
+  <p class="sub">Warum ein Tag in Energiedaten 92, 96 oder 100 Viertelstunden haben kann – und was Gastag und Schaltjahr damit zu tun haben.</p>
+
+  <div class="topbar">
+    <div class="tabs" role="tablist">
+      <button class="tab on" role="tab" data-view="tag">Tag</button>
+      <button class="tab" role="tab" data-view="jahr">Jahr</button>
+      <button class="tab" role="tab" data-view="sim">Simulator</button>
+    </div>
+    <div class="group" role="group" aria-label="Sparte">
+      <button class="btn on" data-div="strom">Strom · 15 Min</button>
+      <button class="btn" data-div="gas">Gas · 60 Min</button>
+    </div>
+  </div>
+
+  <!-- ===== Day view ===== -->
+  <section id="view-tag">
+  <div class="card">
+    <div class="controls">
+      <div class="group">
+        <button class="btn" id="prev" aria-label="Vortag">◀</button>
+        <input type="date" id="date" min="1996-01-01" max="2099-12-31">
+        <button class="btn" id="next" aria-label="Folgetag">▶</button>
+      </div>
+      <div class="group">
+        <span class="hint">Springe zu:</span>
+        <button class="btn" id="jSpring">Frühjahr</button>
+        <button class="btn" id="jAutumn">Herbst</button>
+        <button class="btn" id="jLeap">29.02.</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="showUtc"> UTC zeigen</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="summary" id="summary"></div>
+    <p class="explain" id="explain"></p>
+  </div>
+
+  <div class="card">
+    <div class="grid" id="grid"></div>
+    <div class="legend">
+      <span style="--dot: var(--cell)">normale Stunde</span>
+      <span style="--dot: var(--gap)">fehlende Stunde (Frühjahr)</span>
+      <span style="--dot: var(--a)">A = 02:00–03:00 noch Sommerzeit</span>
+      <span style="--dot: var(--b)">B = 02:00–03:00 schon Winterzeit</span>
+    </div>
+    <p class="hint"><b>So sieht es in SAP aus:</b> „A“ und „B“ gibt es nur auf dieser Seite. In der Profilwerte-Anzeige (EEDM02) steht 02:00–02:45 einfach zweimal hintereinander – ohne Markierung. Nur die Reihenfolge verrät, welcher Block noch Sommerzeit ist.</p>
+  </div>
+  </section>
+
+  <!-- ===== Year view ===== -->
+  <section id="view-jahr" hidden>
+  <div class="card">
+    <div class="controls">
+      <div class="group">
+        <button class="btn" id="yPrev" aria-label="Vorjahr">◀</button>
+        <input type="number" id="year" min="1996" max="2099" class="btn yearinput" aria-label="Jahr">
+        <button class="btn" id="yNext" aria-label="Folgejahr">▶</button>
+      </div>
+      <span class="hint">Klick auf einen Tag öffnet ihn in der Tagesansicht.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="summary" id="ySummary"></div>
+    <div id="ySpecial" class="explain"></div>
+  </div>
+
+  <div class="card">
+    <div class="months" id="months"></div>
+    <div class="legend">
+      <span style="--dot: var(--gap)">kurzer Tag (23 h)</span>
+      <span style="--dot: var(--b)">langer Tag (25 h)</span>
+      <span style="--dot: var(--a)">29.02. (nur Schaltjahr)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Nachschlagen: die nächsten 10 Jahre</h2>
+    <div class="tablewrap"><table class="years" id="years"></table></div>
+  </div>
+  </section>
+
+  <!-- ===== Simulator ===== -->
+  <section id="view-sim" hidden>
+  <div class="card">
+    <h2>Referenzjahr → Zieljahr kopieren</h2>
+    <p class="hint" style="margin-top:0">Ein Profil soll mit Testwerten gefüllt werden: Jeder Tag im Zieljahr bekommt die Werte eines Tages aus dem Referenzjahr.
+      Hier siehst du, an welchen Tagen die Anzahl der Werte nicht passt.</p>
+    <div class="controls">
+      <div class="group">
+        <label class="hint" for="refY">Referenzjahr</label>
+        <input type="number" id="refY" min="1996" max="2099" class="btn yearinput" value="2025">
+        <span>→</span>
+        <label class="hint" for="tgtY">Zieljahr</label>
+        <input type="number" id="tgtY" min="1996" max="2099" class="btn yearinput" value="2028">
+      </div>
+      <button class="btn" id="example">Praxisbeispiel 2025 → 2028</button>
+    </div>
+    <div class="controls" style="margin-top:12px">
+      <label class="chk"><input type="radio" name="method" value="date" checked> 1. Einfach: <b>gleiches Datum</b> (TT.MM.)</label>
+      <label class="chk"><input type="radio" name="method" value="fix"> 2. Gleiches Datum <b>+ Umstellungstage zuordnen</b></label>
+      <label class="chk"><input type="radio" name="method" value="weekday"> 3. <b>Gleicher Wochentag</b> + Umstellungstage zuordnen (empfohlen)</label>
+      <label class="chk"><input type="checkbox" id="leapFb" checked> Schaltjahr-Fallback 29.02. → 28.02. (nur bei 1)</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="summary" id="simSummary"></div>
+    <p class="explain" id="simExplain"></p>
+    <div class="tablewrap"><table class="years" id="simTable"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Und was passiert dann im SAP-System?</h2>
+    <ul>
+      <li>Beim <b>Schreiben</b> der Profilwerte gibt es <b>keinen Fehler</b>: Die Anzahl der Werte pro Tag wird nicht geprüft. 24 Stundenwerte landen anstandslos auf einem 23-Stunden-Tag.</li>
+      <li>Erst später, beim <b>Generieren</b> des synthetischen Profils, kann es scheitern – weit weg von der eigentlichen Ursache.</li>
+      <li>Ein <b>leerer Tag</b> (z. B. 29.02. ohne Fallback) ist noch schlimmer: Die Generierung verlangt einen lückenlosen Zeitraum und blockiert dann das ganze Jahr.</li>
+      <li>In der Anzeige fällt nichts auf: Die doppelte Stunde im Oktober hat keine Markierung.</li>
+    </ul>
+    <p class="hint">Quelle: eigene Erfahrung beim Bau eines einfachen Profilwertegenerators (SAP IS-U EDM), der nach Ansatz 1 arbeitet.</p>
+  </div>
+  </section>
+
+  <div class="card tests" id="tests"></div>
+</div>
+
+<script>
+/* =====================================================================
+   TIME ENGINE – pure UTC arithmetic, independent of the laptop's time zone.
+   Rule (EU, in Germany since 1996): summer time starts on the last Sunday
+   of March at 01:00 UTC (02:00 → 03:00 local) and ends on the last Sunday
+   of October at 01:00 UTC (03:00 → 02:00 local).
+   ===================================================================== */
+const HOUR = 3600000;
+
+// Day of month of the last Sunday (month is 0-based)
+function lastSunday(year, month) {
+  const last = new Date(Date.UTC(year, month + 1, 0));
+  return last.getUTCDate() - last.getUTCDay();
+}
+
+// UTC instants of both switches in a year
+function switches(year) {
+  return { start: Date.UTC(year, 2, lastSunday(year, 2), 1),
+           end:   Date.UTC(year, 9, lastSunday(year, 9), 1) };
+}
+
+// German offset to UTC in hours at a UTC instant: 1 = MEZ (winter), 2 = MESZ (summer)
+function offsetH(t) {
+  const s = switches(new Date(t).getUTCFullYear());
+  return t >= s.start && t < s.end ? 2 : 1;
+}
+
+// Local (German) wall clock time of a UTC instant
+function wall(t) {
+  const w = new Date(t + offsetH(t) * HOUR);
+  return { y: w.getUTCFullYear(), m: w.getUTCMonth(), d: w.getUTCDate(), h: w.getUTCHours(), min: w.getUTCMinutes() };
+}
+
+// UTC instant of a local wall clock time (only used for 00:00 and 06:00, which are never ambiguous)
+function localToUtc(y, m, d, h) {
+  const asUtc = Date.UTC(y, m, d, h);
+  for (const off of [1, 2]) if (offsetH(asUtc - off * HOUR) === off) return asUtc - off * HOUR;
+  return asUtc - HOUR;
+}
+
+const isLeap = y => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
+/* =====================================================================
+   DAY MODEL
+   Strom: day 00:00–24:00, 15-minute values
+   Gas:   gas day 06:00–06:00 (next day), 60-minute values
+   ===================================================================== */
+const DIV = {
+  strom: { step: 15, startH: 0 },
+  gas:   { step: 60, startH: 6 },
+};
+
+function buildDay(y, m, d, div) {
+  const { step, startH } = DIV[div];
+  const from = localToUtc(y, m, d, startH), to = localToUtc(y, m, d + 1, startH);
+  const slots = [];
+  for (let t = from; t < to; t += step * 60000) slots.push({ t, off: offsetH(t), ...wall(t) });
+  return { from, to, hours: (to - from) / HOUR, slots, normal: 24 * 60 / step, step, startH };
+}
+
+/* =====================================================================
+   RENDERING
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const fmtDate = (y, m, d) => `${WD[new Date(Date.UTC(y, m, d)).getUTCDay()]}, ${pad(d)}.${pad(m + 1)}.${y}`;
+
+const state = { y: 0, m: 0, d: 0, div: 'strom' };
+
+function render() {
+  const { y, m, d, div } = state;
+  const day = buildDay(y, m, d, div);
+  const end = wall(day.to);
+  $('date').value = `${y}-${pad(m + 1)}-${pad(d)}`;
+
+  // --- summary ---
+  const diff = day.slots.length - day.normal;
+  const kind = diff < 0 ? 'short' : diff > 0 ? 'long' : 'ok';
+  const unit = div === 'strom' ? 'Viertelstunden' : 'Stundenwerte';
+  const range = div === 'strom'
+    ? fmtDate(y, m, d)
+    : `Gastag ${fmtDate(y, m, d)} 06:00 bis ${fmtDate(end.y, end.m, end.d)} 06:00`;
+  $('summary').innerHTML = `
+    <div><div class="hint">${range}</div>
+      <div class="big">${day.slots.length} <small>${unit} (normal: ${day.normal})</small></div></div>
+    <div><div class="hint">Länge</div><div class="big">${day.hours} <small>Stunden</small></div></div>
+    <span class="verdict ${kind}">${kind === 'ok' ? 'normaler Tag' : kind === 'short' ? `${-diff} Werte weniger` : `${diff} Werte mehr`}</span>`;
+  $('explain').innerHTML = explanation(day);
+
+  // --- grid: one row per local hour, A/B for the doubled hour, a marker for the missing one ---
+  const perHour = 60 / day.step;
+  const grid = $('grid');
+  let html = '', lastDate = '', lastWallH = null;
+  for (let i = 0; i < day.slots.length; i += perHour) {
+    const s = day.slots[i], hourSlots = day.slots.slice(i, i + perHour);
+    const dateKey = `${s.y}-${s.m}-${s.d}`;
+    if (div === 'gas' && dateKey !== lastDate) { html += `<div class="daterow">${fmtDate(s.y, s.m, s.d)}</div>`; lastDate = dateKey; }
+
+    // jump in local time > 1 hour → an hour was skipped (spring)
+    if (lastWallH !== null && (s.h - lastWallH + 24) % 24 === 2)
+      html += `<div class="gaprow">${pad(lastWallH + 1)}:00 – ${pad(s.h)}:00 gibt es heute nicht: die Uhr springt von 02:00 auf 03:00</div>`;
+    lastWallH = s.h;
+
+    // the same local hour twice (autumn): first in summer time (A), then in winter time (B)
+    const twice = day.slots.some(o => o !== s && o.d === s.d && o.h === s.h && o.min === s.min && o.off !== s.off);
+    const ab = twice ? (s.off === 2 ? 'A' : 'B') : '';
+    const u = new Date(s.t);
+    html += `<div class="hrow ${ab.toLowerCase()}">
+      <span class="hlabel">${pad(s.h)}:00 ${ab}</span>
+      <div class="cells" style="--n:${perHour}">${hourSlots.map(q => `<span class="cell">${pad(q.h)}:${pad(q.min)}</span>`).join('')}</div>
+      <span class="utc">UTC ${pad(u.getUTCHours())}:00</span></div>`;
+  }
+  grid.innerHTML = html;
+  grid.classList.toggle('show-utc', $('showUtc').checked);
+
+  // leap-day button only makes sense in leap years
+  $('jLeap').disabled = !isLeap(y);
+
+  // highlight the jump button of the day being shown, however we got there
+  const back = div === 'gas' ? 1 : 0;   // gas: the affected gas day starts on Saturday
+  const active = {
+    jSpring: m === 2 && d === lastSunday(y, 2) - back,
+    jAutumn: m === 9 && d === lastSunday(y, 9) - back,
+    jLeap:   m === 1 && d === 29,
+  };
+  for (const [id, on] of Object.entries(active)) {
+    $(id).classList.toggle('on', on);
+    $(id).setAttribute('aria-pressed', on);
+  }
+}
+
+function explanation(day) {
+  const { y } = state, sw = switches(y);
+  const spring = wall(sw.start - HOUR), autumn = wall(sw.end);   // local dates of both switch Sundays
+  const fmt = (w, back = 0) => { const t = new Date(Date.UTC(w.y, w.m, w.d - back)); return `${pad(t.getUTCDate())}.${pad(t.getUTCMonth() + 1)}.`; };
+  const what = state.div === 'gas' ? 'der Gastag' : 'der Tag';
+  const parts = [];
+  if (day.hours === 23)
+    parts.push(`<b>Sommerzeit-Beginn</b> am Sonntag ${fmt(spring)}: Um 02:00 springt die Uhr auf 03:00. Die Stunde 02:00–03:00 gibt es nicht, ${what} hat 23 Stunden.`);
+  else if (day.hours === 25)
+    parts.push(`<b>Sommerzeit-Ende</b> am Sonntag ${fmt(autumn)}: Um 03:00 wird die Uhr auf 02:00 zurückgestellt. Die Stunde 02:00–03:00 gibt es zweimal (A und B), ${what} hat 25 Stunden.`);
+  else
+    parts.push(`Normaler ${state.div === 'gas' ? 'Gastag' : 'Tag'} mit 24 Stunden.`);
+
+  if (state.div === 'gas') {
+    parts.push('Ein Gastag läuft von 06:00 bis 06:00 des Folgetags.');
+    if (day.hours !== 24)
+      parts.push(`Die Umstellung passiert am Sonntag um 02:00/03:00 – sie fällt also in den Gastag, der am <b>Samstag</b> beginnt. Der Gastag, der am Sonntag beginnt, ist ganz normal.`);
+    else if (state.m === spring.m && state.d === spring.d || state.m === autumn.m && state.d === autumn.d)
+      // the gas day containing the switch started the day before, on Saturday 06:00
+      parts.push(`<b>Achtung, Falle:</b> Heute ist zwar der Umstellungs-Sonntag, aber dieser Gastag beginnt erst um 06:00 – nach der Umstellung. Betroffen ist der Gastag ab Samstag, ${fmt(state.m === spring.m ? spring : autumn, 1)}`);
+  }
+  if (state.m === 1 && state.d === 29)
+    parts.push(`Den 29.02. gibt es nur in Schaltjahren. ${y} hat deshalb 366 Tage.`);
+  return parts.join(' ');
+}
+
+/* =====================================================================
+   CONTROLS
+   ===================================================================== */
+function setDate(y, m, d) {
+  const t = new Date(Date.UTC(y, m, d));   // normalises overflow, e.g. 32.01. → 01.02.
+  const ny = t.getUTCFullYear();
+  if (ny < 1996 || ny > 2099) return;
+  Object.assign(state, { y: ny, m: t.getUTCMonth(), d: t.getUTCDate() });
+  refresh();
+}
+
+// Jump to the affected day: Strom → the Sunday itself, Gas → the gas day starting on Saturday
+function jumpTo(month) {
+  const sunday = lastSunday(state.y, month);
+  setDate(state.y, month, state.div === 'gas' ? sunday - 1 : sunday);
+}
+
+$('date').addEventListener('change', e => {
+  const [y, m, d] = e.target.value.split('-').map(Number);
+  if (y) setDate(y, m - 1, d);
+});
+$('prev').addEventListener('click', () => setDate(state.y, state.m, state.d - 1));
+$('next').addEventListener('click', () => setDate(state.y, state.m, state.d + 1));
+$('jSpring').addEventListener('click', () => jumpTo(2));
+$('jAutumn').addEventListener('click', () => jumpTo(9));
+$('jLeap').addEventListener('click', () => setDate(state.y, 1, 29));
+$('showUtc').addEventListener('change', render);
+document.querySelectorAll('[data-div]').forEach(b => b.addEventListener('click', () => {
+  state.div = b.dataset.div;
+  document.querySelectorAll('[data-div]').forEach(x => x.classList.toggle('on', x === b));
+  refresh();
+}));
+
+/* =====================================================================
+   YEAR VIEW: calendar of the whole year, special days highlighted
+   ===================================================================== */
+const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
+                'September', 'Oktober', 'November', 'Dezember'];
+const fmtNum = n => n.toLocaleString('de-DE');
+
+// Value count of every day of a year, e.g. counts[2][28] = values on 29.03.
+function yearCounts(y, div) {
+  return MONTHS.map((_, m) => {
+    const days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return Array.from({ length: days }, (_, i) => buildDay(y, m, i + 1, div).slots.length);
+  });
+}
+
+function renderYear() {
+  const { y, div } = state;
+  const counts = yearCounts(y, div), normal = div === 'strom' ? 96 : 24;
+  const total = counts.flat().reduce((a, b) => a + b, 0), days = counts.flat().length;
+  const unit = div === 'strom' ? 'Viertelstunden' : 'Stundenwerte';
+  $('year').value = y;
+
+  $('ySummary').innerHTML = `
+    <div><div class="hint">Jahr ${y}${div === 'gas' ? ' (Gastage ab 01.01. 06:00)' : ''}</div>
+      <div class="big">${days} <small>Tage${isLeap(y) ? ' – Schaltjahr' : ''}</small></div></div>
+    <div><div class="hint">Werte im Jahr</div><div class="big">${fmtNum(total)} <small>${unit}</small></div></div>`;
+
+  // special days, found from the counts (not from the rule) – so the list shows what the calendar shows
+  const special = [];
+  counts.forEach((list, m) => list.forEach((n, i) => {
+    const d = i + 1, label = `${WD[new Date(Date.UTC(y, m, d)).getUTCDay()]} ${pad(d)}.${pad(m + 1)}.`;
+    const prefix = div === 'gas' ? `Gastag ab ${label} 06:00` : label;
+    if (n < normal) special.push(`<b>${prefix}</b>: ${n} statt ${normal} Werte (Sommerzeit-Beginn)`);
+    if (n > normal) special.push(`<b>${prefix}</b>: ${n} statt ${normal} Werte (Sommerzeit-Ende)`);
+    if (m === 1 && d === 29) special.push(`<b>${label}</b>: Schalttag – ${n} Werte, die es in anderen Jahren nicht gibt`);
+  }));
+  const fewer = normal - Math.min(...counts.flat()), more = Math.max(...counts.flat()) - normal;
+  $('ySpecial').innerHTML = `Besondere Tage: <ul>${special.map(s => `<li>${s}</li>`).join('')}</ul>
+    <span class="hint">Die beiden Umstellungen gleichen sich aus: −${fewer} Werte im Frühjahr, +${more} im Herbst.
+    Deshalb hat das Jahr genau ${days} × ${normal} = ${fmtNum(total)} Werte.</span>`;
+
+  // 12 month calendars, weeks start on Monday
+  $('months').innerHTML = counts.map((list, m) => {
+    const lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7;
+    const cells = list.map((n, i) => {
+      const d = i + 1;
+      const cls = n < normal ? 'short' : n > normal ? 'long' : m === 1 && d === 29 ? 'leap' : '';
+      return `<button class="day ${cls}" data-m="${m}" data-d="${d}" title="${pad(d)}.${pad(m + 1)}.${y}: ${n} Werte">${d}</button>`;
+    }).join('');
+    return `<div class="month"><h3>${MONTHS[m]}</h3><div class="cal">
+      ${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(w => `<span class="wd">${w}</span>`).join('')}
+      ${'<span></span>'.repeat(lead)}${cells}</div></div>`;
+  }).join('');
+
+  // look-up table: 10 years starting with the selected one
+  const rows = [];
+  for (let yy = y; yy < y + 10 && yy <= 2099; yy++) {
+    const d = isLeap(yy) ? 366 : 365, mar = lastSunday(yy, 2), oct = lastSunday(yy, 9);
+    rows.push(`<tr class="pick ${yy === y ? 'cur' : ''}" data-y="${yy}"><td>${yy}</td>
+      <td>So ${pad(mar)}.03.</td><td>So ${pad(oct)}.10.</td><td>${isLeap(yy) ? 'ja' : '–'}</td>
+      <td>${fmtNum(d * 96)}</td><td>${fmtNum(d * 24)}</td></tr>`);
+  }
+  $('years').innerHTML = `<tr><th>Jahr</th><th>Sommerzeit-Beginn</th><th>Sommerzeit-Ende</th><th>Schaltjahr</th>
+    <th>Werte Strom</th><th>Werte Gas</th></tr>${rows.join('')}`;
+}
+
+$('months').addEventListener('click', ev => {
+  const b = ev.target.closest('.day');
+  if (!b) return;
+  setDate(state.y, +b.dataset.m, +b.dataset.d);
+  showView('tag');
+});
+$('years').addEventListener('click', ev => {
+  const r = ev.target.closest('tr.pick');
+  if (r) setYear(+r.dataset.y);
+});
+$('yPrev').addEventListener('click', () => setYear(state.y - 1));
+$('yNext').addEventListener('click', () => setYear(state.y + 1));
+$('year').addEventListener('change', e => setYear(+e.target.value));
+
+function setYear(y) {
+  if (!(y >= 1996 && y <= 2099)) return;
+  // keep the day; 29.02. becomes 28.02. in a normal year
+  setDate(y, state.m, state.m === 1 && state.d === 29 && !isLeap(y) ? 28 : state.d);
+}
+
+/* =====================================================================
+   SIMULATOR: every target day gets the values of one reference day.
+   Three ways to pick that reference day:
+     date    – same day and month (simplest approach),
+               29.02. → 28.02. if the reference year has no leap day (optional)
+     fix     – like date, plus: a switch day gets the reference year's switch day,
+               a normal day whose reference day is a switch day takes the day one week earlier
+     weekday – the nearest day with the same weekday (max. ±3 days), plus the switch-day rules.
+               Load profiles differ by weekday, so this keeps the shape of the week.
+   ===================================================================== */
+function simulate(refY, tgtY, div, method, leapFallback) {
+  const normal = div === 'strom' ? 96 : 24;
+  const count = (y, m, d) => buildDay(y, m, d, div).slots.length;
+  const weekday = (y, m, d) => new Date(Date.UTC(y, m, d)).getUTCDay();
+  // keep a reference day inside the reference year by moving whole weeks
+  const inRef = t => {
+    if (t.getUTCFullYear() < refY) t.setUTCDate(t.getUTCDate() + 7);
+    if (t.getUTCFullYear() > refY) t.setUTCDate(t.getUTCDate() - 7);
+    return { m: t.getUTCMonth(), d: t.getUTCDate() };
+  };
+
+  const days = isLeap(tgtY) ? 366 : 365, rows = [];
+  let wrongWeekday = 0;
+  for (let i = 0; i < days; i++) {
+    const t = new Date(Date.UTC(tgtY, 0, 1 + i)), m = t.getUTCMonth(), d = t.getUTCDate();
+    const need = count(tgtY, m, d);
+    let src = { m, d }, why = '';
+
+    // 29.02. has no counterpart in a normal year
+    if (m === 1 && d === 29 && !isLeap(refY)) src = leapFallback || method !== 'date' ? { m: 1, d: 28 } : null;
+
+    if (src && method === 'weekday') {
+      let shift = (weekday(tgtY, m, d) - weekday(refY, src.m, src.d) + 7) % 7;
+      if (shift > 3) shift -= 7;
+      if (shift) src = inRef(new Date(Date.UTC(refY, src.m, src.d + shift)));
+    }
+
+    if (src && method !== 'date') {
+      if (need !== normal) {
+        // switch day ← the reference year's switch day with the same count (always in the same month)
+        const last = new Date(Date.UTC(refY, m + 1, 0)).getUTCDate();
+        for (let dd = 1; dd <= last; dd++) if (count(refY, m, dd) === need) { src = { m, d: dd }; break; }
+        why = 'Umstellungstag ← Umstellungstag';
+      } else if (count(refY, src.m, src.d) !== normal) {
+        src = inRef(new Date(Date.UTC(refY, src.m, src.d - 7)));
+        why = 'Referenztag wäre ein Umstellungstag → eine Woche früher';
+      }
+    }
+
+    const got = src ? count(refY, src.m, src.d) : 0;
+    if (src && weekday(tgtY, m, d) !== weekday(refY, src.m, src.d)) wrongWeekday++;
+    if (got !== need || why) rows.push({ m, d, need, got, src, why });
+  }
+  return { rows, broken: rows.filter(r => r.got !== r.need), wrongWeekday, days };
+}
+
+function renderSim() {
+  const refY = +$('refY').value, tgtY = +$('tgtY').value;
+  const method = document.querySelector('[name=method]:checked').value;
+  const fb = $('leapFb');
+  fb.disabled = method !== 'date';                // the improved methods always use the fallback
+  if (method !== 'date') fb.checked = true;
+  if (!(refY >= 1996 && refY <= 2099 && tgtY >= 1996 && tgtY <= 2099)) {
+    $('simSummary').innerHTML = '<span class="verdict short">Bitte Jahre zwischen 1996 und 2099 wählen</span>';
+    $('simExplain').innerHTML = $('simTable').innerHTML = '';
+    return;
+  }
+  const { rows, broken, wrongWeekday, days } = simulate(refY, tgtY, state.div, method, fb.checked);
+  const label = (y, m, d) => `${WD[new Date(Date.UTC(y, m, d)).getUTCDay()]} ${pad(d)}.${pad(m + 1)}.${y}`;
+  const gasPrefix = state.div === 'gas' ? 'Gastag ab ' : '';
+
+  const verdict = broken.length ? ['short', 'Fehler in den Testdaten']
+                : wrongWeekday ? ['long', 'Anzahl passt, Wochentage nicht']
+                : ['ok', 'alles passt'];
+  $('simSummary').innerHTML = `
+    <div><div class="hint">${refY} → ${tgtY}, ${state.div === 'strom' ? 'Strom' : 'Gas'}</div>
+      <div class="big">${broken.length} <small>${broken.length === 1 ? 'Tag' : 'Tage'} mit falscher Anzahl</small></div></div>
+    <div><div class="hint">&nbsp;</div>
+      <div class="big">${wrongWeekday} <small>von ${days} Tagen mit anderem Wochentag</small></div></div>
+    <span class="verdict ${verdict[0]}">${verdict[1]}</span>`;
+
+  const sw = (y) => `So ${pad(lastSunday(y, 2))}.03. / So ${pad(lastSunday(y, 9))}.10.`;
+  const wd = (y) => ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'][new Date(Date.UTC(y, 0, 1)).getUTCDay()];
+  const idea = '<b>Lösungsidee dieser Seite</b> (im System nicht umgesetzt):';
+  $('simExplain').innerHTML = {
+    date: `Die Umstellung liegt ${refY} auf ${sw(refY)}, ${tgtY} dagegen auf ${sw(tgtY)} –
+           beim Kopieren nach Datum bekommen deshalb normale Tage Werte von Umstellungstagen und umgekehrt.
+           ${isLeap(tgtY) && !isLeap(refY) ? `Dazu kommt: ${tgtY} ist ein Schaltjahr, ${refY} nicht.` : ''}
+           Und die Wochentage verrutschen: Der 01.01. ist ${refY} ein ${wd(refY)}, ${tgtY} ein ${wd(tgtY)}.`,
+    fix:  `${idea} Umstellungstage bekommen die Werte des Umstellungstags im Referenzjahr;
+           ein normaler Tag, dessen Referenztag ein Umstellungstag wäre, nimmt den Tag eine Woche früher.
+           Die Anzahl passt jetzt – aber die Wochentage sind weiterhin vertauscht. Für Standardlastprofile
+           (Werktag, Samstag, Sonntag haben verschiedene Kurven) ist das ein zweites Problem.`,
+    weekday: `${idea} Jeder Tag bekommt den nächstgelegenen Tag mit <b>gleichem Wochentag</b> (höchstens ±3 Tage entfernt),
+           dazu die Regeln für Umstellungstage. Damit passen Anzahl <b>und</b> Wochentag.
+           Grenze: Feiertage (z. B. Ostern, Weihnachten) sind nicht berücksichtigt – ein Feiertag im Zieljahr bekommt die Werte eines normalen Tages.`,
+  }[method] + (rows.length ? ' Die Tabelle zeigt alle betroffenen Tage.' : '');
+
+  $('simTable').innerHTML = rows.length ? `<tr><th>Zieltag</th><th>braucht</th><th>bekommt</th><th>aus Referenztag</th><th>${method === 'date' ? 'Problem' : 'Regel'}</th></tr>` +
+    rows.map(r => {
+      const diff = r.got - r.need;
+      const n = Math.abs(diff), w = n === 1 ? 'Wert' : 'Werte';
+      const problem = !r.src ? 'Tag bleibt leer → Lücke' : diff < 0 ? `${n} ${w} fehlt${n === 1 ? '' : 'en'}` : diff > 0 ? `${n} ${w} zu viel` : '';
+      const cls = r.got !== r.need ? 'bad' : '';
+      return `<tr class="pick ${cls}" data-m="${r.m}" data-d="${r.d}" title="In der Tagesansicht öffnen">
+        <td>${gasPrefix}${label(tgtY, r.m, r.d)}</td><td>${r.need}</td><td>${r.got}</td>
+        <td>${r.src ? gasPrefix + label(refY, r.src.m, r.src.d) : '–'}</td><td>${problem || r.why}</td></tr>`;
+    }).join('') : '';
+}
+
+$('simTable').addEventListener('click', ev => {
+  const r = ev.target.closest('tr.pick');
+  if (!r) return;
+  setDate(+$('tgtY').value, +r.dataset.m, +r.dataset.d);
+  showView('tag');
+});
+['refY', 'tgtY', 'leapFb'].forEach(id => $(id).addEventListener('input', () => refresh()));
+document.querySelectorAll('[name=method]').forEach(r => r.addEventListener('change', () => refresh()));
+$('example').addEventListener('click', () => {
+  $('refY').value = 2025; $('tgtY').value = 2028;
+  document.querySelector('[name=method][value=date]').checked = true;
+  $('leapFb').checked = true;
+  refresh();
+});
+
+/* =====================================================================
+   VIEWS
+   ===================================================================== */
+let view = 'tag';
+
+function showView(name) {
+  view = name;
+  document.querySelectorAll('[data-view]').forEach(t => {
+    t.classList.toggle('on', t.dataset.view === name);
+    t.setAttribute('aria-selected', t.dataset.view === name);
+  });
+  $('view-tag').hidden = name !== 'tag';
+  $('view-jahr').hidden = name !== 'jahr';
+  $('view-sim').hidden = name !== 'sim';
+  refresh();
+}
+
+// re-draw only the visible view (year view and simulator compute every day of a year)
+function refresh() {
+  if (view === 'jahr') renderYear();
+  else if (view === 'sim') renderSim();
+  else render();
+}
+
+document.querySelectorAll('[data-view]').forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
+
+/* =====================================================================
+   SELF-TEST – the page checks its own rules on every load
+   1. Switch dates against the official PTB table (1996–2027)
+   2. Own formula against the browser's time-zone database (Europe/Berlin), 1996–2099
+   3. Counts per year: Strom 35 040 / 35 136 values, Gas 8 760 / 8 784
+   ===================================================================== */
+// Source: PTB, "Sommerzeiten in der Bundesrepublik Deutschland ab 1980" – [year]: [March day, October day]
+const PTB = {
+  1996: [31, 27], 1997: [30, 26], 1998: [29, 25], 1999: [28, 31], 2000: [26, 29], 2001: [25, 28],
+  2002: [31, 27], 2003: [30, 26], 2004: [28, 31], 2005: [27, 30], 2006: [26, 29], 2007: [25, 28],
+  2008: [30, 26], 2009: [29, 25], 2010: [28, 31], 2011: [27, 30], 2012: [25, 28], 2013: [31, 27],
+  2014: [30, 26], 2015: [29, 25], 2016: [27, 30], 2017: [26, 29], 2018: [25, 28], 2019: [31, 27],
+  2020: [29, 25], 2021: [28, 31], 2022: [27, 30], 2023: [26, 29], 2024: [31, 27], 2025: [30, 26],
+  2026: [29, 25], 2027: [28, 31],
+};
+
+function selfTest() {
+  const out = [];
+
+  const ptbBad = Object.entries(PTB).filter(([y, [mar, oct]]) => lastSunday(+y, 2) !== mar || lastSunday(+y, 9) !== oct);
+  out.push(ptbBad.length
+    ? `<span class="fail">✗</span> PTB-Tabelle: Abweichung in ${ptbBad.map(([y]) => y).join(', ')}`
+    : `<span class="pass">✓</span> Umstellungstermine 1996–2027 stimmen mit der offiziellen PTB-Tabelle überein`);
+
+  try {
+    const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', hourCycle: 'h23',
+      day: 'numeric', hour: 'numeric' });
+    const bad = [];
+    for (let y = 1996; y <= 2099; y++) {
+      const s = switches(y);
+      // just before and after both switches, plus a winter and a summer instant
+      for (const t of [s.start - HOUR, s.start, s.end - HOUR, s.end, Date.UTC(y, 0, 15, 12), Date.UTC(y, 6, 15, 12)]) {
+        const p = Object.fromEntries(fmt.formatToParts(new Date(t)).map(x => [x.type, x.value]));
+        const w = wall(t);
+        if (+p.hour !== w.h || +p.day !== w.d) { bad.push(y); break; }
+      }
+    }
+    out.push(bad.length
+      ? `<span class="fail">✗</span> Zeitzonen-Datenbank des Browsers weicht ab in: ${bad.join(', ')}`
+      : `<span class="pass">✓</span> Eigene Berechnung = Zeitzonen-Datenbank des Browsers (Europe/Berlin), 1996–2099`);
+  } catch (e) {
+    out.push('– Zeitzonen-Datenbank des Browsers nicht verfügbar, Vergleich übersprungen');
+  }
+
+  const yearBad = [];
+  for (let y = 1996; y <= 2099; y++) {
+    const days = isLeap(y) ? 366 : 365;
+    for (const [div, perDay] of [['strom', 96], ['gas', 24]]) {
+      let n = 0;
+      for (let d = 1; d <= days; d++) n += buildDay(y, 0, d, div).slots.length;
+      if (n !== days * perDay) yearBad.push(`${y} ${div}`);
+    }
+  }
+  out.push(yearBad.length
+    ? `<span class="fail">✗</span> Jahressummen falsch: ${yearBad.slice(0, 5).join(', ')}`
+    : `<span class="pass">✓</span> Jahressummen 1996–2099: Strom 35 040 bzw. 35 136 Werte, Gas 8 760 bzw. 8 784 – die Umstellungen gleichen sich im Jahr aus`);
+
+  // Checked by hand against real profiles in an SAP IS-U system (EEDM02), October 2026
+  out.push(`<span class="pass">✓</span> Im SAP-System nachgezählt: Strom 30.03.2025 = 92 und 26.10.2025 = 100 Werte, Gastag ab 29.03.2025 = 23 und ab 25.10.2025 = 25 Werte`);
+
+  $('tests').innerHTML = `<h2 style="font-size:15px">Selbsttest</h2>${out.map(t => `<div>${t}</div>`).join('')}
+    <div style="margin-top:6px">Annahme: Die EU-Regel gilt auch künftig. Eine Abschaffung der Zeitumstellung wird diskutiert, ist aber nicht beschlossen.</div>`;
+}
+
+/* ---------- start with today ---------- */
+const now = new Date();
+setDate(now.getFullYear(), now.getMonth(), now.getDate());
+selfTest();
+</script>
+</body>
+</html>

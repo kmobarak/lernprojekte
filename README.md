@@ -8,7 +8,7 @@ Jedes Projekt ist eine einzelne HTML-Datei ohne Build-Schritt und ohne Abhängig
 | Nr. | Projekt | Status |
 |---|---|---|
 | 01 | [IS-U Objektkarte](01-isu-objektkarte/) – IS-U-Objekte, Tabellen, Transaktionen und Beziehungen als interaktive Karte, mit Quiz | fertig |
-| 02 | Zeitumstellung & Lastprofile | geplant |
+| 02 | [Zeitumstellung & Lastprofile](02-zeitumstellung/) – 92/96/100 Viertelstunden, Gastag, Schaltjahr; Tages- und Jahresansicht und ein Simulator für Testdaten aus einem Referenzjahr | fertig |
 
 ## Lokal ansehen
 
